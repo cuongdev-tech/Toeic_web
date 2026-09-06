@@ -1,0 +1,14 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const vocab_controller_1 = require("../controllers/vocab.controller");
+const auth_middleware_1 = require("../middlewares/auth.middleware");
+const router = (0, express_1.Router)();
+router.use(auth_middleware_1.verifyToken);
+router.get('/', vocab_controller_1.VocabController.getVocabs);
+router.post('/', vocab_controller_1.VocabController.addVocab);
+router.post('/seed', vocab_controller_1.VocabController.seedDefaultVocabs);
+router.patch('/:id/review', vocab_controller_1.VocabController.reviewVocab);
+router.put('/:id', vocab_controller_1.VocabController.updateVocab);
+router.delete('/:id', vocab_controller_1.VocabController.deleteVocab);
+exports.default = router;

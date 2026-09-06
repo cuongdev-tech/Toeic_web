@@ -8,7 +8,9 @@ export const errorHandler = (err: any, req: Request, res: Response, next: NextFu
   }
 
   const statusCode = err.statusCode || 500;
-  const message = err.message || 'Lỗi hệ thống nội bộ!';
+  const message = process.env.NODE_ENV === 'development'
+    ? (err.message || 'Lỗi hệ thống nội bộ!')
+    : 'Lỗi hệ thống nội bộ!';
 
   res.status(statusCode).json({
     status: 'error',

@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import { prisma } from '../config/prisma';
 
-export const verifyToken = (req: Request, res: Response, next: NextFunction): void => {
+export const verifyToken = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     // 1. Lấy token từ header (Thường có dạng "Bearer eyJhbGci...")
     const authHeader = req.headers.authorization;
@@ -16,7 +17,12 @@ export const verifyToken = (req: Request, res: Response, next: NextFunction): vo
     const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; role: string };
 
     // 3. Gắn thông tin user (id, role) vào request để các API sau có thể sử dụng
-    req.user = decoded;
+    const user = await prisma.user.findUnique({ where: { id: decoded.id }, select: { id: true, role: true, isActive: true } });
+    if (!user || !user.isActive) {
+      res.status(403).json({ success: false, message: 'Tài khoản đã bị khóa hoặc không tồn tại.' });
+      return;
+    }
+    req.user = { ...decoded, role: user.role };
 
     // 4. Cho phép đi tiếp vào Controller
     next();

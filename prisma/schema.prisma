@@ -1,10 +1,11 @@
-datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
-}
 
 generator client {
   provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql" // Sử dụng PostgreSQL
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
@@ -12,70 +13,232 @@ enum Role {
   ADMIN
 }
 
+enum TestStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum AttemptStatus {
+  IN_PROGRESS // Đang thi (dành cho Auto-save)
+  SUBMITTED   // Đã nộp bài
+  ABANDONED   // Bỏ thi / Quá hạn
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
+}
+
+/// 1. BẢNG NGƯỜI DÙNG
 model User {
-  id            String       @id @default(cuid())
-  email         String       @unique
-  password      String
-  fullName      String?
-  role          Role         @default(STUDENT)
-  testResults   TestResult[]
-  vocabularies  Vocabulary[]
-  createdAt     DateTime     @default(now())
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  fullName     String
+  role         Role          @default(STUDENT)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Quan hệ: Một User có thể có nhiều lượt thi
+  testAttempts TestAttempt[]
+  vocabularies Vocabulary[]
+  auditLogs    AuditLog[]
+  passwordResetTokens PasswordResetToken[]
+  @@map("users")
 }
 
-model Test {
-  id          String       @id @default(cuid())
-  title       String
-  description String?
-  duration    Int          @default(120) // Thời gian làm bài (phút)
-  questions   Question[]
-  testResults TestResult[]
+model AuditLog {
+  id        String   @id @default(uuid())
+  actorId   String
+  action    String
+  entity    String
+  entityId  String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  actor User @relation(fields: [actorId], references: [id], onDelete: Cascade)
+
+  @@index([actorId])
+  @@index([entity, entityId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
 
+model PasswordResetToken {
+  id        String    @id @default(uuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
+}
+
+/// 2. BẢNG NHÓM CÂU HỎI (Hỗ trợ Part 3, 4, 6, 7 - Nhiều câu hỏi chung 1 đoạn văn/audio)
+/// Giải quyết Tính năng #1 & #5 (Interactive Transcript)
+model QuestionGroup {
+  id           String     @id @default(uuid())
+  testId       String?
+  title        String?    // Tên nội bộ (VD: Đoạn hội thoại tại nhà ga)
+  partNumber   Int        // Từ 1 đến 7
+  audioUrl     String?    // File nghe chung cho cả nhóm
+  imageUrl     String?    // Hình ảnh chung
+  passageText  String?    @db.Text // Đoạn văn đọc (Reading)
+  
+  // TÍNH NĂNG 5: Interactive Transcript
+  // Lưu JSON mảng: [{ "startTime": 12.5, "endTime": 15, "text": "Hello..." }]
+  transcript   Json?      
+
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  // Quan hệ
+  test         Test?      @relation(fields: [testId], references: [id], onDelete: Cascade)
+  questions    Question[]
+
+  @@index([testId])
+  @@index([partNumber])
+  @@map("question_groups")
+}
+
+/// 3. BẢNG KHO CÂU HỎI ĐỘC LẬP
+/// Giải quyết Tính năng #1 & #4 (Question Bank & Tag Phân tích)
 model Question {
-  id            String       @id @default(cuid())
-  testId        String
-  test          Test         @relation(fields: [testId], references: [id], onDelete: Cascade)
-  partNumber    Int
-  groupText     String?      // Đoạn văn chung cho Part 6, 7
-  audioUrl      String?
-  imageUrl      String?
-  questionText  String?
-  options       Json         // Lưu dạng: ["A. Cat", "B. Dog", "C. Bird", "D. Fish"]
-  correctAnswer String       // "A", "B", "C", "D"
-  explanation   String?
-  userAnswers   UserAnswer[]
+  id            String         @id @default(uuid())
+  groupId       String?        // ID nhóm (Nếu là Part 1,2 có thể null. Part 3-7 phải có)
+  questionText  String         @db.Text
+  partNumber    Int            @default(1)
+  
+  // Lưu mảng JSON: [{"id": "A", "text": "Dog"}, {"id": "B", "text": "Cat"}, ...]
+  options       Json           
+  correctAnswer String         // Khóa đáp án: "A", "B", "C", "D"
+  explanation   String?        @db.Text // Giải thích đáp án
+
+  // TÍNH NĂNG 4: Phân tích điểm yếu
+  difficulty    Difficulty     @default(MEDIUM)
+  tags          String[]       // Mảng tags (VD: ["Grammar", "Vocabulary", "Inference"])
+
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  // Quan hệ
+  group         QuestionGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  tests         TestQuestion[]
+  answers       AttemptAnswer[]
+
+  @@index([groupId])
+  @@map("questions")
 }
 
-model TestResult {
-  id             String       @id @default(cuid())
-  userId         String
-  user           User         @relation(fields: [userId], references: [id])
-  testId         String
-  test           Test         @relation(fields: [testId], references: [id])
-  listeningScore Int
-  readingScore   Int
-  totalScore     Int
-  submittedAt    DateTime     @default(now())
-  userAnswers    UserAnswer[]
+/// 4. BẢNG ĐỀ THI
+/// Cấu thành từ nhiều câu hỏi lấy từ Question Bank
+model Test {
+  id          String         @id @default(uuid())
+  title       String
+  description String?        @db.Text
+  duration    Int            // Thời gian làm bài (Phút) - VD: 120
+  status      TestStatus     @default(DRAFT)
+  
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  // Quan hệ
+  questions   TestQuestion[]
+  questionGroups QuestionGroup[]
+  attempts    TestAttempt[]
+
+  @@map("tests")
 }
 
-model UserAnswer {
-  id             String     @id @default(cuid())
-  testResultId   String
-  testResult     TestResult @relation(fields: [testResultId], references: [id], onDelete: Cascade)
-  questionId     String
-  question       Question   @relation(fields: [questionId], references: [id])
-  selectedAnswer String
-  isCorrect      Boolean
+/// 5. BẢNG TRUNG GIAN TEST - QUESTION (N-N)
+/// Thiết lập vị trí thứ tự câu hỏi trong 1 đề thi cụ thể
+model TestQuestion {
+  id          String   @id @default(uuid())
+  testId      String
+  questionId  String
+  orderIndex  Int      // Số thứ tự câu hỏi trong đề (Từ 1 -> 200)
+
+  test        Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, questionId]) // Đảm bảo 1 đề ko add trùng 1 câu
+  @@index([testId])
+  @@map("test_questions")
 }
 
+/// 6. BẢNG LƯỢT THI & TIẾN ĐỘ THỰC CHIẾN
+/// Giải quyết Tính năng #2, #3 & #4 (Dashboard, Auto-save/Anti-cheat, Analytics Result)
+model TestAttempt {
+  id                String          @id @default(uuid())
+  userId            String
+  testId            String
+  
+  // TÍNH NĂNG 3: Thực chiến (Auto-save & Anti-cheat)
+  status            AttemptStatus   @default(IN_PROGRESS)
+  timeRemaining     Int             // Thời gian còn lại (Giây) - Cập nhật liên tục
+  cheatWarningCount Int             @default(0) // Số lần chuyển tab/thoát full-screen
+
+  // TÍNH NĂNG 2 & 4: Điểm số và Phân tích tổng hợp
+  listeningScore    Int?            // Điểm quy đổi (5-495)
+  readingScore      Int?            // Điểm quy đổi (5-495)
+  totalScore        Int?            // Tổng (10-990)
+  
+  // Lưu cục JSON phân tích điểm yếu (VD: {"Part 5": {"correct": 10, "total": 30}, "Grammar": {...}})
+  skillAnalytics    Json?           
+
+  startedAt         DateTime        @default(now())
+  submittedAt       DateTime?       // Thời gian thực sự nộp bài
+
+  // Quan hệ
+  user              User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  test              Test            @relation(fields: [testId], references: [id], onDelete: Cascade)
+  answers           AttemptAnswer[]
+
+  @@index([userId])
+  @@index([testId])
+  @@index([status])
+  @@map("test_attempts")
+}
+
+/// 7. BẢNG LƯU ĐÁP ÁN CHI TIẾT TỪNG CÂU TRONG LƯỢT THI
+/// Bảng này nhận data liên tục mỗi 30s khi user làm bài
+model AttemptAnswer {
+  id              String      @id @default(uuid())
+  attemptId       String
+  questionId      String
+  selectedOption  String?     // Đáp án học viên chọn ("A", "B", "C", "D" hoặc null nếu chưa làm)
+  isCorrect       Boolean?    // Chỉ tính toán khi nộp bài (submit)
+
+  // Quan hệ
+  attempt         TestAttempt @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        Question    @relation(fields: [questionId], references: [id], onDelete: Cascade)
+
+  @@unique([attemptId, questionId])
+  @@index([attemptId])
+  @@map("attempt_answers")
+}
+/// 8. BẢNG SỔ TAY TỪ VỰNG
 model Vocabulary {
-  id            String   @id @default(cuid())
-  userId        String
-  user          User     @relation(fields: [userId], references: [id])
-  word          String
-  meaning       String
-  status        Int      @default(0) // Mức độ thuộc
+  id             String   @id @default(uuid())
+  userId         String
+  word           String
+  meaning        String
+  status         Int      @default(0) // Mức độ ghi nhớ
   nextReviewDate DateTime @default(now())
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  // Quan hệ: 1 User có nhiều Từ vựng
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("vocabularies")
 }
