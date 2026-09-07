@@ -15,10 +15,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma validate
-          env:
-            DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
       - run: npx prisma generate
-          env:
-            DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
       - run: npx tsc --noEmit
       - run: npm run build:fe
