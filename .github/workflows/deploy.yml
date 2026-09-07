@@ -16,23 +16,31 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx prisma validate
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
       - run: npx prisma generate
+        env:
+          DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
       - run: npx tsc --noEmit
       - run: npm test
       - run: npm run build:fe
 
   deploy-render:
     needs: verify
-    if: ${{ secrets.RENDER_DEPLOY_HOOK_URL != '' }}
     runs-on: ubuntu-latest
+    env:
+      RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK_URL }}
     steps:
       - name: Trigger Render deploy
+        if: env.RENDER_HOOK != ''
         run: curl --fail --silent --show-error -X POST "${{ secrets.RENDER_DEPLOY_HOOK_URL }}"
 
   deploy-railway:
     needs: verify
-    if: ${{ secrets.RAILWAY_DEPLOY_HOOK_URL != '' }}
     runs-on: ubuntu-latest
+    env:
+      RAILWAY_HOOK: ${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}
     steps:
       - name: Trigger Railway deploy
+        if: env.RAILWAY_HOOK != ''
         run: curl --fail --silent --show-error -X POST "${{ secrets.RAILWAY_DEPLOY_HOOK_URL }}"
