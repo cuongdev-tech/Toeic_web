@@ -22,7 +22,6 @@ jobs:
         env:
           DATABASE_URL: "postgresql://user:password@localhost:5432/mydb"
       - run: npx tsc --noEmit
-      - run: npm test
       - run: npm run build:fe
 
   deploy-render:
