@@ -10,6 +10,9 @@ router.use(verifyToken);
 // [GET] /api/v1/tests - Lấy danh sách toàn bộ đề thi
 router.get('/', TestController.getAllTests);
 
+// [GET] /api/v1/tests/practice - Bộ câu luyện theo Part (đặt TRƯỚC /:id để khỏi bị nuốt)
+router.get('/practice', TestController.getPracticeSet);
+
 // [GET] /api/v1/tests/:id - Lấy chi tiết một đề thi cụ thể
 router.get('/:id', TestController.getTestById);
 

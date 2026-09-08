@@ -38,6 +38,7 @@ model User {
   fullName     String
   role         Role          @default(STUDENT)
   isActive     Boolean       @default(true)
+  targetScore  Int           @default(700) // Mục tiêu TOEIC của học viên (10-990), đồng bộ đa thiết bị
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
@@ -123,7 +124,7 @@ model Question {
 
   // TÍNH NĂNG 4: Phân tích điểm yếu
   difficulty    Difficulty     @default(MEDIUM)
-  tags          String[]       // Mảng tags (VD: ["Grammar", "Vocabulary", "Inference"])
+  tags          String[]       @default([]) // Mảng tags (VD: ["Grammar", "Vocabulary", "Inference"])
 
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
@@ -132,6 +133,7 @@ model Question {
   group         QuestionGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   tests         TestQuestion[]
   answers       AttemptAnswer[]
+  vocabLinks    QuestionWord[]
 
   @@index([groupId])
   @@map("questions")
@@ -183,6 +185,7 @@ model TestAttempt {
   // TÍNH NĂNG 3: Thực chiến (Auto-save & Anti-cheat)
   status            AttemptStatus   @default(IN_PROGRESS)
   timeRemaining     Int             // Thời gian còn lại (Giây) - Cập nhật liên tục
+  deadlineAt        DateTime?       // Hạn nộp do SERVER chốt lúc start (startedAt + duration). Null với lượt cũ -> fallback startedAt + duration
   cheatWarningCount Int             @default(0) // Số lần chuyển tab/thoát full-screen
 
   // TÍNH NĂNG 2 & 4: Điểm số và Phân tích tổng hợp
@@ -241,4 +244,52 @@ model Vocabulary {
 
   @@index([userId])
   @@map("vocabularies")
+}
+
+/// 9. KHO TỪ VỰNG CHUNG THEO CHỦ ĐỀ (Admin biên soạn, học viên thêm 1 chạm về sổ tay)
+model VocabTopic {
+  id          String      @id @default(uuid())
+  title       String
+  description String?     @db.Text
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  words       TopicWord[]
+
+  @@map("vocab_topics")
+}
+
+model TopicWord {
+  id        String     @id @default(uuid())
+  topicId   String
+  word      String
+  meaning   String
+  example   String?    @db.Text // Câu ví dụ TOEIC
+
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  topic     VocabTopic @relation(fields: [topicId], references: [id], onDelete: Cascade)
+  questionLinks QuestionWord[]
+
+  @@index([topicId])
+  @@map("topic_words")
+}
+
+/// 10. GẮN TỪ VỰNG VÀO CÂU HỎI (N-N): admin đánh dấu từ đáng học trong từng câu,
+/// làm cầu nối để gợi ý bài từ theo Part yếu + hiện chip lưu từ khi xem review.
+model QuestionWord {
+  id         String   @id @default(uuid())
+  questionId String
+  wordId     String
+
+  createdAt  DateTime @default(now())
+
+  question   Question  @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  word       TopicWord @relation(fields: [wordId], references: [id], onDelete: Cascade)
+
+  @@unique([questionId, wordId])
+  @@index([questionId])
+  @@index([wordId])
+  @@map("question_words")
 }

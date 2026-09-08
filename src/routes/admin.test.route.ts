@@ -10,7 +10,9 @@ const router = Router();
 router.use(verifyToken, isAdmin);
 
 router.get('/tests/:testId/details', AdminTestController.getTestDetails);
+router.get('/tests/:testId/question-stats', AdminTestController.getQuestionStats);
 router.put('/tests/:testId/questions/order', AdminTestController.reorderQuestions);
+router.delete('/tests/:testId/questions/:questionId', AdminTestController.removeQuestionFromTest);
 router.post('/tests/:testId/questions/import-excel', spreadsheetUpload.single('file'), AdminTestController.importQuestionsFromExcel);
 router.post('/question-groups/:groupId/media', mediaUpload.fields([{ name: 'audio', maxCount: 1 }, { name: 'image', maxCount: 1 }]), uploadGroupMedia);
 router.delete('/question-groups/:groupId/media', deleteGroupMedia);

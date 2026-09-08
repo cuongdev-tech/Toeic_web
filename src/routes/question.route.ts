@@ -13,5 +13,7 @@ router.post('/', QuestionController.createQuestion);
 router.get('/', QuestionController.getAllQuestions);
 router.put('/:id', QuestionController.updateQuestion);
 router.delete('/:id', QuestionController.deleteQuestion);
+router.post('/:id/words', QuestionController.attachWord);
+router.delete('/:id/words/:wordId', QuestionController.detachWord);
 
 export default router;

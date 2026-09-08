@@ -23,7 +23,13 @@ export class VocabController {
 
       if (level !== undefined && level !== '') {
         if (String(level) === '3+') whereClause.status = { gte: 3 };
-        else whereClause.status = Number(level);
+        else if (String(level) === '3') whereClause.status = { gte: 3 };
+        else {
+          const parsedLevel = Number(level);
+          if (Number.isInteger(parsedLevel) && parsedLevel >= 0) {
+            whereClause.status = parsedLevel;
+          }
+        }
       }
 
       if (due === 'true') whereClause.nextReviewDate = { lte: new Date() };
@@ -85,16 +91,24 @@ export class VocabController {
         { word: 'Performance', meaning: 'Hiệu suất làm việc' }
       ];
 
-      await prisma.vocabulary.createMany({
-        data: defaultVocabs.map(item => ({
-          userId,
-          word: item.word,
-          meaning: item.meaning,
-          status: 0,
-          nextReviewDate: new Date()
-        })),
-        skipDuplicates: true
+      const existingWords = await prisma.vocabulary.findMany({
+        where: { userId, word: { in: defaultVocabs.map((item) => item.word) } },
+        select: { word: true },
       });
+      const existingSet = new Set(existingWords.map((item) => item.word.toLowerCase()));
+
+      const toCreate = defaultVocabs.filter((item) => !existingSet.has(item.word.toLowerCase()));
+      if (toCreate.length) {
+        await prisma.vocabulary.createMany({
+          data: toCreate.map(item => ({
+            userId,
+            word: item.word,
+            meaning: item.meaning,
+            status: 0,
+            nextReviewDate: new Date()
+          })),
+        });
+      }
 
       res.status(200).json({ 
         status: 'success', 

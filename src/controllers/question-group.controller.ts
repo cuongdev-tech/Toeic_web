@@ -77,11 +77,24 @@ export const QuestionGroupController = {
   updateGroup: async (req: Request, res: Response) => {
     try {
       const { id } = req.params;
-      const updateData = req.body;
+      const { title, partNumber, audioUrl, imageUrl, passageText, transcript, testId } = req.body;
+      const data: Record<string, unknown> = {};
+      if (title !== undefined) data.title = title || null;
+      if (partNumber !== undefined) data.partNumber = Number(partNumber);
+      if (audioUrl !== undefined) data.audioUrl = audioUrl || null;
+      if (imageUrl !== undefined) data.imageUrl = imageUrl || null;
+      if (passageText !== undefined) data.passageText = passageText || null;
+      if (transcript !== undefined) {
+        if (!Array.isArray(transcript)) {
+          return res.status(400).json({ success: false, message: 'transcript phải là mảng.' });
+        }
+        data.transcript = transcript;
+      }
+      if (testId !== undefined) data.testId = testId ? String(testId) : null;
 
       const updatedGroup = await prisma.questionGroup.update({
         where: { id: id as string },
-        data: updateData,
+        data: data as any,
       });
 
       return res.status(200).json({ success: true, message: 'Cập nhật thành công', data: updatedGroup });

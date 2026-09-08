@@ -8,9 +8,34 @@ import nodemailer from 'nodemailer';
 export const getProfile = async (req: Request, res: Response): Promise<void> => {
   const userId = req.user?.id;
   if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
-  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, fullName: true, role: true, createdAt: true } });
+  const user = await prisma.user.findUnique({ where: { id: userId }, select: { id: true, email: true, fullName: true, role: true, targetScore: true, createdAt: true } });
   if (!user) { res.status(404).json({ success: false, message: 'Không tìm thấy tài khoản.' }); return; }
   res.json({ success: true, data: { user } });
+};
+
+export const updateProfile = async (req: Request, res: Response): Promise<void> => {
+  const userId = req.user?.id;
+  if (!userId) { res.status(401).json({ success: false, message: 'Unauthorized' }); return; }
+  const data: { fullName?: string; targetScore?: number } = {};
+  if (req.body.fullName !== undefined) {
+    const fullName = String(req.body.fullName).trim();
+    if (fullName.length < 2) { res.status(400).json({ success: false, message: 'Họ tên không hợp lệ.' }); return; }
+    data.fullName = fullName;
+  }
+  if (req.body.targetScore !== undefined) {
+    const targetScore = Number(req.body.targetScore);
+    if (!Number.isInteger(targetScore) || targetScore < 10 || targetScore > 990) {
+      res.status(400).json({ success: false, message: 'Mục tiêu phải là số nguyên từ 10 đến 990.' }); return;
+    }
+    data.targetScore = targetScore;
+  }
+  if (!Object.keys(data).length) { res.status(400).json({ success: false, message: 'Không có gì để cập nhật.' }); return; }
+  const user = await prisma.user.update({
+    where: { id: userId },
+    data,
+    select: { id: true, email: true, fullName: true, role: true, targetScore: true, createdAt: true },
+  });
+  res.json({ success: true, message: 'Cập nhật hồ sơ thành công.', data: { user } });
 };
 
 export const changePassword = async (req: Request, res: Response): Promise<void> => {
@@ -27,9 +52,11 @@ export const changePassword = async (req: Request, res: Response): Promise<void>
 // [POST] /api/auth/register
 export const register = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password, fullName } = req.body;
+    const rawEmail = req.body.email;
+    const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : '';
+    const { password, fullName } = req.body;
 
-    if (typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email)) {
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
       res.status(400).json({ success: false, message: 'Email không hợp lệ.' });
       return;
     }
@@ -76,10 +103,13 @@ export const register = async (req: Request, res: Response): Promise<void> => {
     res.status(201).json({ 
       success: true, 
       message: 'Đăng ký thành công!', 
+      token,
+      refreshToken,
+      user: { id: newUser.id, email: newUser.email, fullName: newUser.fullName, role: newUser.role, targetScore: newUser.targetScore },
       data: {
         token,
         refreshToken,
-        user: { id: newUser.id, email: newUser.email, fullName: newUser.fullName, role: newUser.role },
+        user: { id: newUser.id, email: newUser.email, fullName: newUser.fullName, role: newUser.role, targetScore: newUser.targetScore },
       },
     });
   } catch (error) {
@@ -91,9 +121,11 @@ export const register = async (req: Request, res: Response): Promise<void> => {
 // [POST] /api/auth/login
 export const login = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    const rawEmail = req.body.email;
+    const { password } = req.body;
+    const email = typeof rawEmail === 'string' ? rawEmail.toLowerCase().trim() : '';
 
-    if (typeof email !== 'string' || typeof password !== 'string') {
+    if (!email || typeof password !== 'string') {
       res.status(400).json({ success: false, message: 'Email và mật khẩu là bắt buộc.' });
       return;
     }
@@ -129,7 +161,12 @@ export const login = async (req: Request, res: Response): Promise<void> => {
       message: 'Đăng nhập thành công!',
       token,
       refreshToken,
-      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role }
+      user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, targetScore: user.targetScore },
+      data: {
+        token,
+        refreshToken,
+        user: { id: user.id, email: user.email, fullName: user.fullName, role: user.role, targetScore: user.targetScore },
+      },
     });
   } catch (error) {
     console.error(error);
@@ -203,3 +240,4 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
   ]);
   res.json({ success: true, message: 'Đặt lại mật khẩu thành công.' });
 };
+

@@ -102,9 +102,34 @@ export const QuestionController = {
   // 4 & 5. Cập nhật và Xóa (Giữ nguyên cấu trúc chuẩn)
   updateQuestion: async (req: Request, res: Response) => {
     try {
+      const { questionText, options, correctAnswer, explanation, difficulty, tags, partNumber, groupId } = req.body;
+      const data: Record<string, unknown> = {};
+      if (questionText !== undefined) data.questionText = questionText;
+      if (options !== undefined) {
+        if (!Array.isArray(options) || options.length < 2) {
+          return res.status(400).json({ success: false, message: 'options phải là mảng chứa ít nhất 2 đáp án.' });
+        }
+        data.options = options;
+      }
+      if (correctAnswer !== undefined) {
+        if (!['A', 'B', 'C', 'D'].includes(String(correctAnswer))) {
+          return res.status(400).json({ success: false, message: 'correctAnswer phải là A, B, C hoặc D.' });
+        }
+        data.correctAnswer = String(correctAnswer);
+      }
+      if (explanation !== undefined) data.explanation = explanation || null;
+      if (difficulty !== undefined) {
+        if (!['EASY', 'MEDIUM', 'HARD'].includes(String(difficulty))) {
+          return res.status(400).json({ success: false, message: 'difficulty không hợp lệ.' });
+        }
+        data.difficulty = difficulty;
+      }
+      if (tags !== undefined) data.tags = Array.isArray(tags) ? tags : [];
+      if (partNumber !== undefined) data.partNumber = Number(partNumber) || 1;
+      if (groupId !== undefined) data.groupId = groupId ? String(groupId) : null;
       const updatedQuestion = await prisma.question.update({
         where: { id: req.params.id as string },
-        data: req.body,
+        data: data as any,
       });
       return res.status(200).json({ success: true, message: 'Cập nhật thành công', data: updatedQuestion });
     } catch (error: any) {
@@ -114,8 +139,68 @@ export const QuestionController = {
 
   deleteQuestion: async (req: Request, res: Response) => {
     try {
-      await prisma.question.delete({ where: { id: req.params.id as string } });
+      const id = req.params.id as string;
+      // Xóa câu hỏi sẽ cascade sang TestQuestion + AttemptAnswer (làm thay đổi
+      // lịch sử bài thi cũ), nên chặn khi câu đã có lượt trả lời — trừ khi force.
+      const [answerCount, linkCount] = await Promise.all([
+        prisma.attemptAnswer.count({ where: { questionId: id } }),
+        prisma.testQuestion.count({ where: { questionId: id } }),
+      ]);
+      if (answerCount > 0 && req.query.force !== 'true') {
+        return res.status(409).json({
+          success: false,
+          message: `Câu hỏi đã có ${answerCount} lượt trả lời trong lịch sử thi. Xóa sẽ làm thay đổi kết quả cũ.`,
+          data: { answerCount, linkCount, forceHint: 'Thêm ?force=true để xóa buộc.' },
+        });
+      }
+      await prisma.question.delete({ where: { id } });
+      await prisma.auditLog.create({
+        data: {
+          actorId: req.user!.id,
+          action: req.query.force === 'true' ? 'QUESTION_FORCE_DELETED' : 'QUESTION_DELETED',
+          entity: 'Question',
+          entityId: id,
+          metadata: { answerCount, linkCount },
+        },
+      }).catch(() => undefined);
       return res.status(200).json({ success: true, message: 'Xóa câu hỏi thành công' });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  // 6 & 7. Gắn / gỡ từ vựng (kho chung) vào câu hỏi để gợi ý khi review.
+  attachWord: async (req: Request, res: Response) => {
+    try {
+      const questionId = req.params.id as string;
+      const wordId = String(req.body.wordId || '');
+      if (!wordId) {
+        return res.status(400).json({ success: false, message: 'Thiếu wordId.' });
+      }
+      const [question, word] = await Promise.all([
+        prisma.question.findUnique({ where: { id: questionId }, select: { id: true } }),
+        prisma.topicWord.findUnique({ where: { id: wordId }, select: { id: true } }),
+      ]);
+      if (!question) return res.status(404).json({ success: false, message: 'Không tìm thấy câu hỏi.' });
+      if (!word) return res.status(404).json({ success: false, message: 'Không tìm thấy từ vựng.' });
+      try {
+        await prisma.questionWord.create({ data: { questionId, wordId } });
+      } catch (e: any) {
+        // P2002 = đã gắn rồi → coi như thành công idempotent.
+        if (e?.code !== 'P2002') throw e;
+      }
+      return res.status(201).json({ success: true, message: 'Đã gắn từ vào câu hỏi.' });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  },
+
+  detachWord: async (req: Request, res: Response) => {
+    try {
+      await prisma.questionWord.deleteMany({
+        where: { questionId: req.params.id as string, wordId: String(req.params.wordId) },
+      });
+      return res.status(200).json({ success: true, message: 'Đã gỡ từ khỏi câu hỏi.' });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
     }

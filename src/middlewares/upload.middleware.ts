@@ -13,7 +13,11 @@ export const mediaUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 20 * 1024 * 1024 },
   fileFilter: (_req, file, callback) => {
-    callback(null, allowedMimeTypes.has(file.mimetype));
+    if (allowedMimeTypes.has(file.mimetype)) {
+      callback(null, true);
+      return;
+    }
+    callback(new Error(`Định dạng file không hỗ trợ: ${file.mimetype}. Chỉ chấp nhận audio (mp3/wav/ogg) và ảnh (jpeg/png/webp).`));
   },
 });
 

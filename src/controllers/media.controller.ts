@@ -45,7 +45,12 @@ export const deleteGroupMedia = async (req: Request, res: Response): Promise<voi
   if (!group) { res.status(404).json({ success: false, message: 'Không tìm thấy nhóm câu hỏi.' }); return; }
   const url = group[field];
   if (url?.startsWith('/uploads/')) {
-    await fs.unlink(path.join(process.cwd(), 'public', url.slice('/uploads/'.length))).catch(() => undefined);
+    const filename = url.slice('/uploads/'.length).replace(/^\/+/, '');
+    // Ngăn path traversal: chỉ lấy tên file, bỏ mọi thư mục lồng nhau
+    const safeName = path.basename(filename);
+    if (safeName) {
+      await fs.unlink(path.join(process.cwd(), 'public', 'uploads', safeName)).catch(() => undefined);
+    }
   } else if (url && isCloudinaryConfigured()) {
     const publicId = cloudinaryPublicIdFromUrl(url);
     if (publicId) await deleteFromCloudinary(publicId, field === 'audioUrl' ? 'video' : 'image');

@@ -14,7 +14,13 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     const token = authHeader.split(' ')[1];
 
     // 2. Giải mã token bằng chìa khóa bí mật trong file .env
-    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; role: string };
+    const decoded = jwt.verify(token, process.env.JWT_SECRET as string) as { id: string; role: string; tokenType?: string };
+
+    // 3. Chặn refresh token dùng làm access token
+    if (decoded.tokenType && decoded.tokenType !== 'access') {
+      res.status(401).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn!' });
+      return;
+    }
 
     // 3. Gắn thông tin user (id, role) vào request để các API sau có thể sử dụng
     const user = await prisma.user.findUnique({ where: { id: decoded.id }, select: { id: true, role: true, isActive: true } });
@@ -27,7 +33,7 @@ export const verifyToken = async (req: Request, res: Response, next: NextFunctio
     // 4. Cho phép đi tiếp vào Controller
     next();
   } catch (error) {
-    res.status(403).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn!' });
+    res.status(401).json({ success: false, message: 'Token không hợp lệ hoặc đã hết hạn!' });
   }
 };
 

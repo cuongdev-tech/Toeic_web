@@ -6,13 +6,13 @@ COPY prisma ./prisma
 COPY prisma.config.ts tsconfig.json ./
 COPY src ./src
 RUN npx prisma generate
-RUN npx tsc --noEmit false
+RUN npx tsc
 
 FROM node:22-alpine AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
 COPY package*.json ./
-RUN npm ci
+RUN npm ci --omit=dev && npm install --no-save prisma@^6.19.3
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
