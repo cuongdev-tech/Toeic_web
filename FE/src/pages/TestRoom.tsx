@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { fetchApi } from '../lib/api';
+import { API_BASE_URL, fetchApi } from '../lib/api';
 import { 
   Clock, 
   AlertTriangle, 
@@ -57,12 +57,16 @@ export default function TestRoom() {
 
   // --- REFS (Dành cho Background Sync & Timer không gây re-render) ---
   const answersRef = useRef<AnswerState[]>([]);
-  const timeLeftRef = useRef<number>(0);
   const cheatCountRef = useRef<number>(0);
+  // deadlineAt do SERVER chốt (epoch ms, đã bù lệch đồng hồ client/server).
+  // Đồng hồ hiển thị suy ra từ mốc này, không tin timeLeft trong localStorage.
+  const deadlineAtRef = useRef<number>(0);
+  // Lệch đồng hồ client - server (ms), đo lúc start để đếm ngược chính xác.
+  const clockSkewRef = useRef<number>(0);
+  const submittingRef = useRef<boolean>(false);
 
   // Đồng bộ Ref với State
   useEffect(() => { answersRef.current = answers; }, [answers]);
-  useEffect(() => { timeLeftRef.current = timeLeft; }, [timeLeft]);
   useEffect(() => { cheatCountRef.current = cheatCount; }, [cheatCount]);
 
   const draftKey = `toeic-draft-${testId}`;
@@ -73,7 +77,7 @@ export default function TestRoom() {
       try {
         // 1. Lấy thông tin đề thi
         const testRes = await fetchApi(`/tests/${testId}`);
-        if (!testRes.success) throw new Error(testRes.message);
+        if (!testRes.success && testRes.status !== 'success') throw new Error(testRes.message || 'Không tải được đề thi.');
         
         const data = testRes.data.test || testRes.data; 
         setTestInfo({ title: data.title, duration: data.duration });
@@ -88,17 +92,24 @@ export default function TestRoom() {
           method: 'POST',
           body: JSON.stringify({ testId })
         });
-        if (!startRes.success) throw new Error(startRes.message);
+        if (!startRes.success && startRes.status !== 'success') throw new Error(startRes.message || 'Không thể bắt đầu lượt thi.');
         const attempt = startRes.data;
-        const initialTime = attempt.timeRemaining ?? data.duration * 60;
+        // Chốt deadline theo giờ server (bù lệch đồng hồ client). Fallback cho BE cũ.
+        const skew = attempt.serverTime ? Date.now() - new Date(attempt.serverTime).getTime() : 0;
+        clockSkewRef.current = skew;
+        const deadlineMs = attempt.deadlineAt
+          ? new Date(attempt.deadlineAt).getTime()
+          : Date.now() - skew + (attempt.timeRemaining ?? data.duration * 60) * 1000;
+        deadlineAtRef.current = deadlineMs;
+        const initialTime = Math.max(0, Math.floor((deadlineMs - (Date.now() - skew)) / 1000));
         let restoredAnswers = (attempt.answers || []).filter((answer: AnswerState) => answer.selectedOption);
         try {
           const draft = JSON.parse(localStorage.getItem(draftKey) || '{}');
           if (Array.isArray(draft.answers) && draft.answers.length > restoredAnswers.length) restoredAnswers = draft.answers;
           if (Array.isArray(draft.savedQuestionIds)) setSavedQuestionIds(draft.savedQuestionIds);
+          // Không phục hồi timeLeft từ draft: đồng hồ duy nhất là deadlineAt của server.
         } catch { /* Ignore a corrupted offline draft and use server state. */ }
         setTimeLeft(initialTime);
-        timeLeftRef.current = initialTime;
         setCheatCount(attempt.cheatWarningCount || 0);
         cheatCountRef.current = attempt.cheatWarningCount || 0;
         setAnswers(restoredAnswers);
@@ -131,28 +142,78 @@ export default function TestRoom() {
     };
   }, [attemptId]);
 
-  // --- 3. ĐỒNG HỒ ĐẾM NGƯỢC ---
+  // --- 3. NỘP BÀI (idempotent: timer + sync hết giờ + nút nộp cùng gọi) ---
+  const handleSubmit = async (autoSubmit = false) => {
+    if (!attemptId || submittingRef.current) return;
+    submittingRef.current = true;
+    setShowSubmitModal(false);
+    setSubmitting(true);
+
+    try {
+      // Sync cuối (không gửi timeRemaining: server tự tính từ deadlineAt).
+      // Sync có thể 409 hết giờ -> vẫn nộp tiếp trong ân hạn 120s của server.
+      try {
+        await fetchApi(`/tests/attempts/${attemptId}/sync`, {
+          method: 'PATCH',
+          body: JSON.stringify({
+            cheatWarningCount: cheatCountRef.current,
+            answers: answersRef.current,
+          }),
+        });
+      } catch (syncErr) {
+        console.warn('Sync cuối thất bại, vẫn nộp bài:', syncErr);
+      }
+      const res = await fetchApi(`/tests/attempts/${attemptId}/submit`, {
+        method: 'POST',
+        body: JSON.stringify({
+          answers: answersRef.current,
+          cheatCount: cheatCountRef.current
+        })
+      });
+
+      if (res.success || res.status === 'success') {
+        if (res.data?.isLate) alert('Bài đã hết giờ nhưng vẫn nộp kịp trong thời gian ân hạn của hệ thống.');
+        setShowSubmitModal(false);
+        navigate(`/tests/review/${attemptId}`);
+        localStorage.removeItem(draftKey);
+      } else {
+        throw new Error(res.message);
+      }
+    } catch (err: any) {
+      const expired = /hết giờ|quá hạn|expired/i.test(err.message || '');
+      if (expired || autoSubmit) {
+        alert('Bài thi đã hết giờ theo giờ hệ thống. Lượt thi này đã được đóng.');
+        navigate('/tests');
+        localStorage.removeItem(draftKey);
+        return;
+      }
+      alert(err.message || 'Lỗi trong quá trình nộp bài.');
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  };
+
+  // --- 4. ĐỒNG HỒ ĐẾM NGƯỢC (suy ra từ deadlineAt của server) ---
   useEffect(() => {
     if (loading || !attemptId || submitting) return;
 
-    const timer = setInterval(() => {
-      setTimeLeft(prev => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSubmit(true); // Hết giờ -> Tự động nộp
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((deadlineAtRef.current - (Date.now() - clockSkewRef.current)) / 1000));
+      setTimeLeft(remaining);
+      if (remaining <= 0) void handleSubmit(true); // Hết giờ (giờ server) -> tự động nộp
+    };
+    tick();
+    const timer = setInterval(tick, 1000);
 
     return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, attemptId, submitting]);
 
   useEffect(() => {
     if (!testId || !attemptId || submitting) return;
-    localStorage.setItem(draftKey, JSON.stringify({ answers, timeLeft, cheatCount, savedQuestionIds, updatedAt: Date.now() }));
-  }, [answers, timeLeft, cheatCount, savedQuestionIds, testId, attemptId, submitting]);
+    // Chỉ lưu đáp án + cheat + saved; KHÔNG lưu timeLeft (giờ do server quản lý).
+    localStorage.setItem(draftKey, JSON.stringify({ answers, cheatCount, savedQuestionIds, updatedAt: Date.now() }));
+  }, [answers, cheatCount, savedQuestionIds, testId, attemptId, submitting]);
 
   useEffect(() => {
     if (!attemptId || submitting) return;
@@ -160,7 +221,7 @@ export default function TestRoom() {
     const saveBeforeExit = () => {
       const token = localStorage.getItem('token');
       if (!token) return;
-      void fetch(`http://localhost:5000/api/v1/tests/attempts/${attemptId}/sync`, {
+      void fetch(`${API_BASE_URL}/tests/attempts/${attemptId}/sync`, {
         method: 'PATCH',
         keepalive: true,
         headers: {
@@ -168,7 +229,6 @@ export default function TestRoom() {
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-          timeRemaining: timeLeftRef.current,
           cheatWarningCount: cheatCountRef.current,
           answers: answersRef.current,
         }),
@@ -179,7 +239,7 @@ export default function TestRoom() {
     return () => window.removeEventListener('beforeunload', saveBeforeExit);
   }, [attemptId, submitting]);
 
-  // --- 4. AUTO-SAVE NGẦM (BACKGROUND SYNC) MỖI 30S ---
+  // --- 5. AUTO-SAVE NGẦM (BACKGROUND SYNC) MỖI 30S ---
   useEffect(() => {
     if (loading || !attemptId || submitting) return;
 
@@ -187,14 +247,26 @@ export default function TestRoom() {
       fetchApi(`/tests/attempts/${attemptId}/sync`, {
         method: 'PATCH',
         body: JSON.stringify({
-          timeRemaining: timeLeftRef.current,
           cheatWarningCount: cheatCountRef.current,
           answers: answersRef.current
         })
-      }).catch(err => console.error('Lỗi Auto-save ngầm:', err)); // Silent fail
+      }).then((res) => {
+        // Server hết giờ hoặc cheat vượt ngưỡng -> nộp ngay, không chờ timer.
+        if (res?.forceSubmit) void handleSubmit(true);
+        else if (typeof res?.serverRemaining === 'number') {
+          const remaining = Math.max(0, res.serverRemaining);
+          setTimeLeft(remaining);
+          if (remaining <= 0) void handleSubmit(true);
+        }
+      }).catch((err) => {
+        // fetchApi ném Error khi 409: hết giờ -> tự nộp để kịp ân hạn server.
+        if (/hết giờ|expired/i.test(err?.message || '')) void handleSubmit(true);
+        else console.error('Lỗi Auto-save ngầm:', err); // Silent fail
+      });
     }, 30000); // 30 giây
 
     return () => clearInterval(syncInterval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, attemptId, submitting]);
 
   // --- HANDLERS ---
@@ -226,41 +298,6 @@ export default function TestRoom() {
   const getSelectedOption = useCallback((questionId: string) => {
     return answers.find(a => a.questionId === questionId)?.selectedOption;
   }, [answers]);
-
-  const handleSubmit = async (autoSubmit = false) => {
-    if (!attemptId) return;
-    setShowSubmitModal(false);
-    setSubmitting(true);
-
-    try {
-      await fetchApi(`/tests/attempts/${attemptId}/sync`, {
-        method: 'PATCH',
-        body: JSON.stringify({
-          timeRemaining: Math.max(1, timeLeftRef.current),
-          cheatWarningCount: cheatCountRef.current,
-          answers: answersRef.current,
-        }),
-      });
-      const res = await fetchApi(`/tests/attempts/${attemptId}/submit`, {
-        method: 'POST',
-        body: JSON.stringify({
-          answers: answersRef.current,
-          cheatCount: cheatCountRef.current
-        })
-      });
-
-if (res.success) {
-        setShowSubmitModal(false);
-        navigate(`/tests/review/${attemptId}`);
-        localStorage.removeItem(draftKey);
-      } else {
-        throw new Error(res.message);
-      } // Dòng 191 (Đảm bảo sau chữ này không còn dấu nháy ` nào)
-    } catch (err: any) { 
-      alert(err.message || 'Lỗi trong quá trình nộp bài.');
-      setSubmitting(false); 
-    }
-};
   // Tiện ích
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -273,33 +310,48 @@ if (res.success) {
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
   };
 
-  const parseOptions = (optionsStr: string | string[]): string[] => {
-    if (Array.isArray(optionsStr)) return optionsStr;
-    try {
-      return JSON.parse(optionsStr);
-    } catch {
-      return [];
+  const parseOptions = (optionsInput: unknown): string[] => {
+    const normalize = (value: unknown): string => {
+      if (typeof value === 'string') return value;
+      if (value && typeof value === 'object') {
+        const obj = value as Record<string, unknown>;
+        const id = typeof obj.id === 'string' ? obj.id : '';
+        const text = typeof obj.text === 'string' ? obj.text : (typeof obj.label === 'string' ? obj.label : '');
+        if (id && text) return `${id}. ${text.replace(/^[A-D][\.\):\-]\s*/, '')}`;
+        if (text) return text;
+      }
+      return String(value ?? '');
+    };
+    if (Array.isArray(optionsInput)) return optionsInput.map(normalize).filter(Boolean);
+    if (typeof optionsInput === 'string') {
+      try {
+        const parsed = JSON.parse(optionsInput);
+        if (Array.isArray(parsed)) return parsed.map(normalize).filter(Boolean);
+      } catch {
+        return [];
+      }
     }
+    return [];
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center">
-        <Loader2 className="w-12 h-12 animate-spin text-indigo-600 mb-4" />
+      <div className="min-h-screen bg-background flex flex-col items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-primary-600 mb-4" />
         <p className="text-lg font-medium text-slate-600">Đang khởi tạo phòng thi...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
+    <div className="min-h-screen bg-background flex flex-col font-sans">
       {/* --- HEADER --- */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button 
               onClick={() => {
-                if(window.confirm('Bạn có chắc muốn thoát? Kết quả làm bài sẽ không được lưu!')) {
+                if(window.confirm('Bạn có chắc muốn thoát? Bài làm đã được tự động lưu và có thể tiếp tục trong thời gian thi còn lại.')) {
                   navigate('/tests');
                 }
               }}
@@ -313,7 +365,7 @@ if (res.success) {
           </div>
           
           <div className="flex items-center gap-6">
-            <div className={`flex items-center gap-2 font-mono text-xl font-bold px-4 py-1.5 rounded-lg ${timeLeft < 300 ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-700'}`}>
+            <div title="Giờ thi do server quản lý — chỉnh đồng hồ máy không kéo dài được giờ làm bài" className={`flex items-center gap-2 font-mono text-xl font-bold px-4 py-1.5 rounded-lg ${timeLeft < 300 ? 'bg-danger-50 text-danger-600' : 'bg-slate-100 text-slate-700'}`}>
               <Clock className="w-5 h-5" />
               {formatTime(timeLeft)}
             </div>
@@ -321,7 +373,7 @@ if (res.success) {
             <button 
               onClick={() => setShowSubmitModal(true)}
               disabled={submitting}
-              className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2 disabled:opacity-50"
+              className="btn-primary px-6 py-2"
             >
               {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
               {submitting ? 'Đang nộp...' : 'Nộp bài'}
@@ -347,8 +399,8 @@ if (res.success) {
                 
                 {/* Khu vực Nhóm Câu hỏi (Audio / Đoạn văn) */}
                 {hasMedia && (
-                  <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm sticky top-20 z-30">
-                    <h4 className="text-sm font-bold text-indigo-600 mb-4 flex items-center gap-2 uppercase tracking-wider">
+                  <div className="card sticky top-20 z-30">
+                    <h4 className="text-sm font-bold text-primary-600 mb-4 flex items-center gap-2 uppercase tracking-wider">
                       <FileText className="w-4 h-4" /> Part {q.partNumber} Context
                     </h4>
                     
@@ -368,7 +420,7 @@ if (res.success) {
                     )}
 
                     {q.group?.passageText && (
-                      <div className="prose prose-slate max-w-none text-slate-700 whitespace-pre-wrap font-serif text-lg leading-relaxed bg-slate-50 p-6 rounded-xl border border-slate-100">
+                      <div className="max-w-none text-slate-700 whitespace-pre-wrap font-reading text-lg leading-relaxed bg-slate-50 p-6 rounded-inner border border-slate-100">
                         {q.group.passageText}
                       </div>
                     )}
@@ -376,29 +428,30 @@ if (res.success) {
                 )}
 
                 {/* Câu hỏi trắc nghiệm */}
-                <div id={`question-${q.id}`} className="bg-white rounded-2xl p-6 sm:p-8 border border-slate-200 shadow-sm scroll-mt-24">
+                <div id={`question-${q.id}`} className="card sm:p-8 scroll-mt-24">
                   <div className="flex gap-4">
-                    <div className="shrink-0 w-8 h-8 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center font-bold">
+                    <div className="shrink-0 w-8 h-8 rounded-full bg-primary-100 text-primary-700 flex items-center justify-center font-bold">
                       {index + 1}
                     </div>
                     <div className="flex-1">
                       <p className="text-lg text-slate-900 font-medium mb-6">
                         {q.questionText}
                       </p>
-                      <button type="button" onClick={() => saveQuestionAsVocabulary(q)} disabled={savedQuestionIds.includes(q.id)} className="mb-4 text-xs text-indigo-600 disabled:text-emerald-600">
+                      <button type="button" onClick={() => saveQuestionAsVocabulary(q)} disabled={savedQuestionIds.includes(q.id)} className="mb-4 text-xs text-primary-600 disabled:text-success-600">
                         {savedQuestionIds.includes(q.id) ? 'Đã lưu vào từ vựng' : 'Lưu từ/cụm từ'}
                       </button>
                       <div className="space-y-3">
                         {parsedOptions.map((optionText, optIdx) => {
-                          const letter = optionText.charAt(0); // A, B, C, D
+                          const letterMatch = optionText.match(/^\s*\(?([A-D])[\.\):\-]/) || optionText.match(/^\s*([A-D])/);
+                          const letter = letterMatch ? letterMatch[1] : String.fromCharCode(65 + optIdx);
                           const isSelected = getSelectedOption(q.id) === letter;
                           return (
                             <label 
                               key={optIdx} 
                               className={`flex items-center p-4 rounded-xl border-2 cursor-pointer transition-all ${
                                 isSelected 
-                                  ? 'border-indigo-600 bg-indigo-50/50' 
-                                  : 'border-slate-100 hover:border-indigo-200 hover:bg-slate-50'
+                                  ? 'border-primary-600 bg-primary-50/50' 
+                                  : 'border-slate-100 hover:border-primary-200 hover:bg-slate-50'
                               }`}
                             >
                               <input 
@@ -409,11 +462,11 @@ if (res.success) {
                                 onChange={() => handleSelectAnswer(q.id, letter)}
                               />
                               <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center mr-4 shrink-0 transition-colors ${
-                                isSelected ? 'border-indigo-600' : 'border-slate-300'
+                                isSelected ? 'border-primary-600' : 'border-slate-300'
                               }`}>
-                                {isSelected && <div className="w-3 h-3 rounded-full bg-indigo-600" />}
+                                {isSelected && <div className="w-3 h-3 rounded-full bg-primary-600" />}
                               </div>
-                              <span className={`text-base ${isSelected ? 'text-indigo-900 font-medium' : 'text-slate-700'}`}>
+                              <span className={`text-base ${isSelected ? 'text-primary-900 font-medium' : 'text-slate-700'}`}>
                                 {optionText}
                               </span>
                             </label>
@@ -430,10 +483,10 @@ if (res.success) {
 
         {/* CỘT PHẢI: BUBBLE SHEET (30% - STICKY) */}
         <div className="w-full lg:w-[30%] hidden lg:block">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-sm sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
+          <div className="card sticky top-24 max-h-[calc(100vh-8rem)] overflow-y-auto">
             <h3 className="font-bold text-slate-900 mb-4 flex items-center justify-between sticky top-0 bg-white pb-2 z-10 border-b border-slate-100">
               Bảng trả lời
-              <span className="text-sm font-medium text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full">
+              <span className="text-sm font-medium text-primary-600 bg-primary-50 px-3 py-1 rounded-full">
                 {answers.length} / {questions.length}
               </span>
             </h3>
@@ -448,8 +501,8 @@ if (res.success) {
                     title={hasAnswer ? `Đã chọn: ${getSelectedOption(q.id)}` : 'Chưa làm'}
                     className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-semibold transition-all border ${
                       hasAnswer 
-                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-sm shadow-indigo-200' 
-                        : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-400 hover:text-indigo-600'
+                        ? 'bg-primary-600 border-primary-600 text-white shadow-sm shadow-primary-200' 
+                        : 'bg-white border-slate-200 text-slate-500 hover:border-primary-400 hover:text-primary-600'
                     }`}
                   >
                     {index + 1}
@@ -464,11 +517,11 @@ if (res.success) {
         <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 p-4 z-40 shadow-[0_-4px_6px_-1px_rgb(0,0,0,0.05)]">
            <div className="flex items-center justify-between max-w-md mx-auto">
              <div className="text-sm font-medium text-slate-600">
-               Đã làm: <span className="text-indigo-600 font-bold">{answers.length}/{questions.length}</span>
+               Đã làm: <span className="text-primary-600 font-bold">{answers.length}/{questions.length}</span>
              </div>
              <button 
                 onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
-                className="text-indigo-600 font-medium text-sm flex items-center gap-1"
+                className="text-primary-600 font-medium text-sm flex items-center gap-1"
              >
                 Trở lên đầu
              </button>
@@ -479,8 +532,8 @@ if (res.success) {
       {/* --- MODAL XÁC NHẬN NỘP BÀI --- */}
       {showSubmitModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-xl">
-            <div className="w-12 h-12 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center mb-4">
+          <div className="card w-full max-w-sm shadow-xl">
+            <div className="w-12 h-12 rounded-full bg-primary-50 text-primary-600 flex items-center justify-center mb-4">
               <CheckCircle2 className="w-6 h-6" />
             </div>
             <h3 className="text-xl font-bold text-slate-900 mb-2">Xác nhận nộp bài</h3>
@@ -491,14 +544,14 @@ if (res.success) {
               <button 
                 onClick={() => setShowSubmitModal(false)}
                 disabled={submitting}
-                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium py-2.5 rounded-xl transition-colors disabled:opacity-50"
+                className="btn-secondary flex-1"
               >
                 Tiếp tục làm
               </button>
               <button 
                 onClick={() => handleSubmit(false)}
                 disabled={submitting}
-                className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-2.5 rounded-xl transition-colors disabled:opacity-50 flex justify-center items-center gap-2"
+                className="btn-primary flex-1"
               >
                 {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : null}
                 Nộp bài
@@ -510,31 +563,31 @@ if (res.success) {
 
       {/* --- MODAL ANTI-CHEAT --- */}
       {showCheatModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-red-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-red-100">
-            <div className="bg-red-50 p-6 text-center border-b border-red-100 relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-danger-900/40 backdrop-blur-sm">
+          <div className="bg-white rounded-card w-full max-w-md shadow-2xl overflow-hidden border border-danger-100">
+            <div className="bg-danger-50 p-6 text-center border-b border-danger-100 relative">
                <button 
                  onClick={() => setShowCheatModal(false)}
-                 className="absolute top-4 right-4 text-red-400 hover:text-red-600 transition-colors"
+                 className="absolute top-4 right-4 text-danger-400 hover:text-danger-600 transition-colors"
                >
                  <X className="w-5 h-5" />
                </button>
-               <div className="w-16 h-16 rounded-full bg-red-100 text-red-600 flex items-center justify-center mx-auto mb-4">
+               <div className="w-16 h-16 rounded-full bg-danger-100 text-danger-600 flex items-center justify-center mx-auto mb-4">
                  <AlertTriangle className="w-8 h-8" />
                </div>
-               <h3 className="text-xl font-bold text-red-900 mb-1">Cảnh báo vi phạm!</h3>
+               <h3 className="text-xl font-bold text-danger-900 mb-1">Cảnh báo vi phạm!</h3>
             </div>
             <div className="p-6">
               <p className="text-slate-600 text-center mb-6">
                 Hệ thống phát hiện bạn vừa <b>rời khỏi màn hình làm bài</b>. 
                 <br/><br/>
-                Số lần vi phạm: <span className="font-bold text-red-600 text-lg">{cheatCount}</span>
+                Số lần vi phạm: <span className="font-bold text-danger-600 text-lg">{cheatCount}</span>
                 <br/><br/>
-                <span className="text-sm">Hành vi này đã được tự động lưu lại. Vui lòng tập trung làm bài!</span>
+                <span className="text-sm">Hành vi này đã được tự động lưu lại. Từ 5 lần vi phạm, hệ thống sẽ tự động nộp bài. Vui lòng tập trung làm bài!</span>
               </p>
               <button 
                 onClick={() => setShowCheatModal(false)}
-                className="w-full bg-red-600 hover:bg-red-700 text-white font-medium py-3 rounded-xl transition-colors"
+                className="btn-danger w-full py-3"
               >
                 Tôi đã hiểu, quay lại làm bài
               </button>

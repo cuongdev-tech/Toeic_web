@@ -1,37 +1,215 @@
 @import "tailwindcss";
 
+/* ==========================================================================
+   TOEIC Master — Design tokens (Tailwind v4 @theme)
+   Quy ước vai trò màu:
+   - primary (indigo): khu HỌC VIÊN — CTA, link, badge, focus
+   - admin (slate-950): khu QUẢN TRỊ — nút, banner admin
+   - success / danger / warning / info: màu ngữ nghĩa duy nhất toàn site
+   ========================================================================== */
+@theme {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-reading: ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+
+  /* Primary — indigo scale */
+  --color-primary-50: #eef2ff;
+  --color-primary-100: #e0e7ff;
+  --color-primary-200: #c7d2fe;
+  --color-primary-300: #a5b4fc;
+  --color-primary-400: #818cf8;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #4f46e5;
+  --color-primary-700: #4338ca;
+  --color-primary-800: #3730a3;
+  --color-primary-900: #312e81;
+  --color-primary-950: #1e1b4b;
+
+  /* Admin — đen */
+  --color-admin-800: #1e293b;
+  --color-admin-900: #0f172a;
+  --color-admin-950: #020617;
+
+  /* Nền & bề mặt: MỘT nền duy nhất toàn site */
+  --color-background: #f5f7fb;
+  --color-surface: #ffffff;
+
+  /* Ngữ nghĩa */
+  --color-success-50: #ecfdf5;
+  --color-success-100: #d1fae5;
+  --color-success-200: #a7f3d0;
+  --color-success-300: #6ee7b7;
+  --color-success-500: #10b981;
+  --color-success-600: #059669;
+  --color-success-700: #047857;
+  --color-success-800: #065f46;
+  --color-danger-50: #fef2f2;
+  --color-danger-100: #fee2e2;
+  --color-danger-200: #fecaca;
+  --color-danger-300: #fca5a5;
+  --color-danger-500: #ef4444;
+  --color-danger-600: #dc2626;
+  --color-danger-700: #b91c1c;
+  --color-danger-900: #7f1d1d;
+  --color-warning-50: #fffbeb;
+  --color-warning-100: #fef3c7;
+  --color-warning-200: #fde68a;
+  --color-warning-300: #fcd34a;
+  --color-warning-500: #f59e0b;
+  --color-warning-500: #f59e0b;
+  --color-warning-600: #d97706;
+  --color-warning-700: #b45309;
+  --color-warning-800: #92400e;
+  --color-info-50: #eff6ff;
+  --color-info-100: #dbeafe;
+  --color-info-400: #60a5fa;
+  --color-info-600: #2563eb;
+  --color-info-900: #1e3a8a;
+
+  /* Điểm thi: tổng = primary, nghe = info, đọc = success */
+  --color-score-listening: #2563eb;
+  --color-score-listening-soft: #eff6ff;
+  --color-score-listening-ink: #1e3a8a;
+  --color-score-reading: #059669;
+  --color-score-reading-soft: #ecfdf5;
+  --color-score-reading-ink: #064e3b;
+
+  /* Bo góc chuẩn: card > inner > input */
+  --radius-card: 1rem;
+  --radius-inner: 0.75rem;
+  --radius-input: 0.625rem;
+
+  /* Bóng đổ chuẩn */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 12px 32px rgb(79 70 229 / 0.14);
+}
+
 :root {
-	font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-	color: #172033;
-	background: #f5f7fb;
-	font-synthesis: none;
-	text-rendering: optimizeLegibility;
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
 
-html { background: #f5f7fb; }
+html { background: var(--color-background); }
 
 body {
-	margin: 0;
-	min-width: 320px;
-	min-height: 100vh;
-	background:
-		radial-gradient(circle at 8% 0%, rgba(99, 102, 241, 0.11), transparent 28rem),
-		radial-gradient(circle at 92% 10%, rgba(245, 158, 11, 0.08), transparent 24rem),
-		#f5f7fb;
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: var(--font-sans);
+  color: var(--color-slate-900);
+  background:
+    radial-gradient(circle at 8% 0%, rgb(79 70 229 / 0.11), transparent 28rem),
+    radial-gradient(circle at 92% 10%, rgb(245 158 11 / 0.08), transparent 24rem),
+    var(--color-background);
 }
 
 button, a, input, select, textarea { -webkit-tap-highlight-color: transparent; }
 
 button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible {
-	outline: 3px solid rgba(99, 102, 241, 0.28);
-	outline-offset: 2px;
+  outline: 3px solid rgb(79 70 229 / 0.28);
+  outline-offset: 2px;
 }
 
-::selection { background: #312e81; color: white; }
+::selection { background: var(--color-primary-900); color: white; }
 
 ::-webkit-scrollbar { width: 10px; }
 ::-webkit-scrollbar-track { background: #eef1f7; }
 ::-webkit-scrollbar-thumb { background: #c7cedd; border-radius: 999px; border: 3px solid #eef1f7; }
 ::-webkit-scrollbar-thumb:hover { background: #aab4c8; }
+
+/* ==========================================================================
+   Component classes dùng chung (@layer components)
+   Utilities Tailwind viết sau sẽ override khi cần (p-8, w-full, pl-10…)
+   ========================================================================== */
+@utility btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  border-radius: var(--radius-inner);
+  transition-property: color, background-color, border-color;
+  transition-duration: 150ms;
+  user-select: none;
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+@layer components {
+  /* Khung trang: .page + 1 trong 4 cỡ */
+  .page { @apply mx-auto w-full px-4 sm:px-6 py-6; }
+  .page-sm { @apply max-w-md; }
+  .page-md { @apply max-w-4xl; }
+  .page-lg { @apply max-w-5xl; }
+  .page-xl { @apply max-w-7xl; }
+
+  /* Thẻ card chuẩn */
+  .card { @apply bg-surface border border-slate-200 rounded-card shadow-card p-6; }
+
+  /* Nhãn section in hoa */
+  .section-label { @apply text-xs font-bold uppercase tracking-wider text-slate-500; }
+
+  /* Badge pill */
+  .badge { @apply inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap; }
+
+  /* Nút bấm */
+  .btn-primary {
+    @apply btn bg-primary-600 text-white shadow-sm px-4 py-2.5 text-sm;
+  }
+  .btn-primary:hover { background: var(--color-primary-700); }
+  .btn-admin {
+    @apply btn bg-admin-950 text-white shadow-sm px-4 py-2.5 text-sm;
+  }
+  .btn-admin:hover { background: var(--color-admin-800); }
+  .btn-secondary {
+    @apply btn bg-slate-100 text-slate-700 px-4 py-2.5 text-sm;
+  }
+  .btn-secondary:hover { background: var(--color-slate-200); }
+  .btn-success {
+    @apply btn bg-success-600 text-white shadow-sm px-4 py-2.5 text-sm;
+  }
+  .btn-success:hover { background: var(--color-success-700); }
+  .btn-danger {
+    @apply btn bg-danger-600 text-white shadow-sm px-4 py-2.5 text-sm;
+  }
+  .btn-danger:hover { background: var(--color-danger-700); }
+
+  /* Ô nhập liệu — MỘT kiểu duy nhất (nền tint để nổi trên card trắng) */
+  .input {
+    @apply w-full bg-slate-50 border border-slate-200 rounded-input px-3 py-2.5
+      text-sm text-slate-900 placeholder:text-slate-400 outline-none transition-colors;
+  }
+  .input:focus { border-color: var(--color-primary-600); box-shadow: 0 0 0 3px rgb(79 70 229 / 0.15); }
+
+  /* Flashcard 3D — perspective ở khung ngoài, xoay ở lớp inner */
+  .flashcard { perspective: 1200px; cursor: pointer; }
+  .flashcard-inner {
+    position: relative;
+    width: 100%;
+    transform-style: preserve-3d;
+    transition: transform 0.55s cubic-bezier(0.2, 0.7, 0.3, 1);
+  }
+  .flashcard.flipped .flashcard-inner { transform: rotateY(180deg); }
+  .flashcard-face {
+    display: flex;
+    flex-direction: column;
+    backface-visibility: hidden;
+    -webkit-backface-visibility: hidden;
+  }
+  .flashcard-front { position: relative; }
+  .flashcard-back {
+    position: absolute;
+    inset: 0;
+    transform: rotateY(180deg);
+    border-color: var(--color-primary-200);
+  }
+  .flashcard:focus-visible { outline: 3px solid rgb(79 70 229 / 0.28); outline-offset: 4px; border-radius: var(--radius-card); }
+}
+
+/* Tôn trọng người dùng giảm chuyển động: tắt lật mượt */
+@media (prefers-reduced-motion: reduce) {
+  .flashcard-inner { transition: none; }
+}

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { BookOpen, LogOut, User, Settings, LayoutDashboard, BarChart2 } from 'lucide-react';
+import { BookOpen, BookX, Dumbbell, LogOut, Medal, User, Settings, LayoutDashboard, BarChart2 } from 'lucide-react';
 
 export default function Navbar() {
   const navigate = useNavigate();
@@ -33,7 +33,7 @@ export default function Navbar() {
         <div className="flex min-h-16 items-center justify-between gap-4 py-2">
           <div className="flex items-center">
             <Link to="/" className="flex-shrink-0 flex items-center gap-2">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-950 shadow-lg shadow-indigo-200">
+              <div className={`flex h-9 w-9 items-center justify-center rounded-xl shadow-lg shadow-primary-200 ${isAdmin ? 'bg-admin-950' : 'bg-primary-600'}`}>
                 <BookOpen className="w-5 h-5 text-white" />
               </div>
               <span className="text-lg font-bold tracking-tight text-slate-950 sm:text-xl">
@@ -48,35 +48,47 @@ export default function Navbar() {
                 {isAdmin ? (
                   // MENU DÀNH CHO ADMIN
                   <>
-                    <Link to="/dashboard" className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/dashboard" className="flex items-center gap-1.5 text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       <LayoutDashboard className="w-4 h-4" /> Tổng quan hệ thống
                     </Link>
-                    <Link to="/admin" className="flex items-center gap-1.5 rounded-xl bg-slate-950 px-3 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-indigo-700">
+                    <Link to="/admin" className="btn-admin">
                       <Settings className="w-4 h-4" /> Quản lý đề thi
                     </Link>
-                    <Link to="/admin/users" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/admin/users" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       Học viên
                     </Link>
-                    <Link to="/admin/audit-logs" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/admin/vocab" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
+                      Kho từ vựng
+                    </Link>
+                    <Link to="/admin/audit-logs" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       Nhật ký
                     </Link>
                   </>
                 ) : (
                   // MENU DÀNH CHO HỌC VIÊN
                   <>
-                    <Link to="/student-dashboard" className="hidden items-center gap-1 text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600 sm:flex">
+                    <Link to="/student-dashboard" className="hidden items-center gap-1 text-sm font-medium text-slate-600 transition-colors hover:text-primary-600 sm:flex">
                       <LayoutDashboard className="w-4 h-4" /> Tổng quan
                     </Link>
-                    <Link to="/tests" className="text-sm font-medium text-slate-600 transition-colors hover:text-indigo-600">
+                    <Link to="/tests" className="text-sm font-medium text-slate-600 transition-colors hover:text-primary-600">
                       Đề thi
                     </Link>
-                    <Link to="/analytics" className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/practice" className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
+                      <Dumbbell className="w-4 h-4" /> Luyện Part
+                    </Link>
+                    <Link to="/analytics" className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       <BarChart2 className="w-4 h-4" /> Thống kê cá nhân
                     </Link>
-                    <Link to="/transcript" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/mistakes" className="flex items-center gap-1 text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
+                      <BookX className="w-4 h-4" /> Câu sai cần ôn
+                    </Link>
+                    <Link to="/achievements" className="hidden items-center gap-1 text-sm font-medium text-slate-600 transition-colors hover:text-primary-600 sm:flex">
+                      <Medal className="w-4 h-4" /> Huy hiệu
+                    </Link>
+                    <Link to="/transcript" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       Bảng điểm / Lịch sử
                     </Link>
-                    <Link to="/vocab" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                    <Link to="/vocab" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                       Từ vựng
                     </Link>
                   </>
@@ -85,19 +97,19 @@ export default function Navbar() {
                 <div className="h-6 w-px bg-slate-200 mx-2"></div>
                 
                 <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-                    <User className="w-4 h-4 text-indigo-600" />
+                  <div className="w-8 h-8 rounded-full bg-primary-50 border border-primary-100 flex items-center justify-center">
+                    <User className="w-4 h-4 text-primary-600" />
                   </div>
                   <div className="hidden sm:block text-left">
                     <div className="text-sm font-medium text-slate-700">{user.fullName || user.name || 'User'}</div>
                     <div className="text-[10px] text-slate-400 uppercase font-semibold">{isAdmin ? 'Quản trị viên' : 'Học viên'}</div>
                   </div>
-                  <Link to="/profile" className="text-xs text-indigo-600 hover:underline">Hồ sơ</Link>
+                  <Link to="/profile" className="text-xs text-primary-600 hover:underline">Hồ sơ</Link>
                 </div>
 
                 <button
                   onClick={handleLogout}
-                  className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-md hover:bg-red-50"
+                  className="p-2 text-slate-400 hover:text-danger-600 transition-colors rounded-md hover:bg-danger-50"
                   title="Đăng xuất"
                 >
                   <LogOut className="w-5 h-5" />
@@ -105,12 +117,12 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-indigo-600 transition-colors">
+                <Link to="/login" className="text-sm font-medium text-slate-600 hover:text-primary-600 transition-colors">
                   Đăng nhập
                 </Link>
                 <Link
                   to="/register"
-                  className="text-sm font-medium bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition-colors shadow-sm"
+                  className="btn-primary px-4 py-2"
                 >
                   Đăng ký
                 </Link>

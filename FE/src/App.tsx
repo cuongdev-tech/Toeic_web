@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Navbar from './components/Navbar';
-import Dashboard from './pages/AdminDashboard';
+import ChartLoading from './components/ChartLoading';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Tests from './pages/Tests';
@@ -10,14 +10,32 @@ import TranscriptHistory from './pages/TranscriptHistory';
 import AdminTests from './pages/AdminTests';
 import TestReview from './pages/TestReview';
 import TestRoom from './pages/TestRoom';
-import Analytics from './pages/Analytics'; // Thêm import trang Thống kê cá nhân
 import AdminTestEditor from './pages/AdminTestEditor';
-import StudentDashboard from './pages/StudentDashboard';
 import Profile from './pages/Profile';
+import Landing from './pages/Landing';
 import AdminUsers from './pages/AdminUsers';
 import PasswordReset from './pages/PasswordReset';
 import AdminAuditLogs from './pages/AdminAuditLogs';
 import AdminTestPreview from './pages/AdminTestPreview';
+import AdminUserDetail from './pages/AdminUserDetail';
+const AdminVocab = lazy(() => import('./pages/AdminVocab'));
+
+// Code-split các trang chứa biểu đồ để Recharts không phình chunk ban đầu.
+// Recharts chỉ được tải khi người dùng thực sự vào các route này.
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const StudentDashboard = lazy(() => import('./pages/StudentDashboard'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Mistakes = lazy(() => import('./pages/Mistakes'));
+const Achievements = lazy(() => import('./pages/Achievements'));
+const Practice = lazy(() => import('./pages/Practice'));
+
+function PageFallback() {
+  return (
+    <div className="page page-lg">
+      <ChartLoading label="Đang tải trang..." />
+    </div>
+  );
+}
 
 // Simple PrivateRoute wrapper
 const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
@@ -28,11 +46,48 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
   return <>{children}</>;
 };
 
+function getStoredUser(): { role?: string; isAdmin?: boolean } | null {
+  try {
+    const item = localStorage.getItem('user');
+    if (!item || item === 'undefined') return null;
+    return JSON.parse(item);
+  } catch {
+    return null;
+  }
+}
+
+// Chặn học viên truy cập trang quản trị (BE vẫn bảo vệ bằng isAdmin, đây là lớp UX)
+const AdminRoute = ({ children }: { children: React.ReactNode }) => {
+  const token = localStorage.getItem('token');
+  if (!token) {
+    return <Navigate to="/login" replace />;
+  }
+  const user = getStoredUser();
+  const isAdmin = user?.role === 'ADMIN' || user?.isAdmin === true;
+  if (!isAdmin) {
+    return <Navigate to="/tests" replace />;
+  }
+  return <>{children}</>;
+};
+
+// Trang chủ: khách xem landing, đã login thì vào thẳng app theo vai trò.
+function HomeRoute() {
+  const token = localStorage.getItem('token');
+  if (token) {
+    const user = getStoredUser();
+    const isAdmin = user?.role === 'ADMIN' || user?.isAdmin === true;
+    return <Navigate to={isAdmin ? "/dashboard" : "/tests"} replace />;
+  }
+  return <Landing />;
+}
+
 // Simple PublicRoute wrapper (prevents logged in users from seeing login)
 const PublicRoute = ({ children }: { children: React.ReactNode }) => {
   const token = localStorage.getItem('token');
   if (token) {
-    return <Navigate to="/tests" replace />;
+    const user = getStoredUser();
+    const isAdmin = user?.role === 'ADMIN' || user?.isAdmin === true;
+    return <Navigate to={isAdmin ? "/dashboard" : "/tests"} replace />;
   }
   return <>{children}</>;
 };
@@ -40,15 +95,12 @@ const PublicRoute = ({ children }: { children: React.ReactNode }) => {
 export default function App() {
   return (
     <BrowserRouter>
-      <div className="min-h-screen text-slate-900 antialiased flex flex-col selection:bg-indigo-500 selection:text-white">
-        <Routes>
-          <Route path="/tests/:id/room" element={<></>} />
-          <Route path="/tests/review/:attemptId" element={<></>} />
-          <Route path="*" element={<Navbar />} />
-        </Routes>
+      <div className="min-h-screen text-slate-900 antialiased flex flex-col selection:bg-primary-500 selection:text-white">
+        <Navbar />
         <main className="flex-1 w-full flex flex-col">
+          <Suspense fallback={<PageFallback />}>
           <Routes>
-            <Route path="/" element={<Navigate to="/tests" replace />} />
+            <Route path="/" element={<HomeRoute />} />
             <Route 
               path="/login" 
               element={
@@ -107,6 +159,30 @@ export default function App() {
                 </PrivateRoute>
               } 
             />
+            <Route
+              path="/mistakes"
+              element={
+                <PrivateRoute>
+                  <Mistakes />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/achievements"
+              element={
+                <PrivateRoute>
+                  <Achievements />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="/practice"
+              element={
+                <PrivateRoute>
+                  <Practice />
+                </PrivateRoute>
+              }
+            />
             <Route 
               path="/tests/:id/room" 
               element={
@@ -126,31 +202,34 @@ export default function App() {
             <Route 
               path="/admin" 
               element={
-                <PrivateRoute>
+                <AdminRoute>
                   <AdminTests />
-                </PrivateRoute>
+                </AdminRoute>
               } 
             />
             <Route
               path="/admin/tests/:testId/edit"
               element={
-                <PrivateRoute>
+                <AdminRoute>
                   <AdminTestEditor />
-                </PrivateRoute>
+                </AdminRoute>
               }
             />
-            <Route path="/admin/users" element={<PrivateRoute><AdminUsers /></PrivateRoute>} />
-            <Route path="/admin/audit-logs" element={<PrivateRoute><AdminAuditLogs /></PrivateRoute>} />
-            <Route path="/admin/tests/:testId/preview" element={<PrivateRoute><AdminTestPreview /></PrivateRoute>} />
+            <Route path="/admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+            <Route path="/admin/users/:userId" element={<AdminRoute><AdminUserDetail /></AdminRoute>} />
+            <Route path="/admin/vocab" element={<AdminRoute><AdminVocab /></AdminRoute>} />
+            <Route path="/admin/audit-logs" element={<AdminRoute><AdminAuditLogs /></AdminRoute>} />
+            <Route path="/admin/tests/:testId/preview" element={<AdminRoute><AdminTestPreview /></AdminRoute>} />
             <Route 
               path="/dashboard" 
               element={
-                <PrivateRoute>
-                  <Dashboard />
-                </PrivateRoute>
+                <AdminRoute>
+                  <AdminDashboard />
+                </AdminRoute>
               } 
             />
           </Routes>
+          </Suspense>
         </main>
       </div>
     </BrowserRouter>

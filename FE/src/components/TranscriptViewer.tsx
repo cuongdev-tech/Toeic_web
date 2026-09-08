@@ -64,13 +64,13 @@ export default function TranscriptViewer({ groupId }: TranscriptViewerProps) {
   if (!data) return <div className="p-6 text-center text-slate-400">Không tìm thấy dữ liệu nhóm câu hỏi.</div>;
 
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-6">
+    <div className="card space-y-6">
       <div className="flex items-center justify-between border-b border-slate-100 pb-4">
         <h3 className="font-bold text-slate-800 flex items-center gap-2">
-          <FileText className="w-5 h-5 text-indigo-600" /> Nội dung đoạn hội thoại / Đoạn văn
+          <FileText className="w-5 h-5 text-primary-600" /> Nội dung đoạn hội thoại / Đoạn văn
         </h3>
         {data.audioUrl && (
-          <div className="flex items-center gap-3 bg-indigo-50 px-4 py-2 rounded-xl">
+          <div className="flex items-center gap-3 bg-primary-50 px-4 py-2 rounded-inner">
             <audio 
               ref={audioRef} 
               src={data.audioUrl} 
@@ -86,11 +86,11 @@ export default function TranscriptViewer({ groupId }: TranscriptViewerProps) {
             />
             <button 
               onClick={togglePlay}
-              className="w-10 h-10 bg-indigo-600 text-white rounded-full flex items-center justify-center hover:bg-indigo-700 transition-colors shadow-sm"
+              className="w-10 h-10 bg-primary-600 text-white rounded-full flex items-center justify-center hover:bg-primary-700 transition-colors shadow-sm"
             >
               {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
             </button>
-            <span className="text-sm font-medium text-indigo-900 flex items-center gap-1">
+            <span className="text-sm font-medium text-primary-900 flex items-center gap-1">
               <Volume2 className="w-4 h-4" /> Audio bài nghe
             </span>
           </div>
@@ -99,7 +99,7 @@ export default function TranscriptViewer({ groupId }: TranscriptViewerProps) {
 
       {/* Hiển thị đoạn vănpassageText (nếu có) */}
       {data.passageText && (
-        <div className="p-4 bg-slate-50 rounded-xl border border-slate-100 text-slate-700 leading-relaxed whitespace-pre-line text-sm">
+        <div className="p-4 bg-slate-50 rounded-inner border border-slate-100 text-slate-700 leading-relaxed whitespace-pre-line text-sm">
           {data.passageText}
         </div>
       )}
@@ -112,15 +112,15 @@ export default function TranscriptViewer({ groupId }: TranscriptViewerProps) {
         ) : (
           <div className="space-y-2.5">
             {data.transcript.map((item: any, index: number) => (
-              <button type="button" key={index} onClick={() => seekToLine(item, index)} className={`w-full text-left p-3.5 rounded-xl border transition-all flex gap-3 ${activeIndex === index ? 'border-indigo-300 bg-indigo-50' : 'border-slate-100 hover:border-indigo-100 bg-white'}`}>
-                <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2.5 py-1 rounded-lg h-fit">
+              <button type="button" key={index} onClick={() => seekToLine(item, index)} className={`w-full text-left p-3.5 rounded-inner border transition-all flex gap-3 ${activeIndex === index ? 'border-primary-300 bg-primary-50' : 'border-slate-100 hover:border-primary-100 bg-white'}`}>
+                <span className="text-xs font-semibold text-primary-600 bg-primary-50 px-2.5 py-1 rounded-input h-fit">
                   {item.speaker || `Speaker ${index + 1}`}
                 </span>
                 <div className="flex-1 space-y-1">
                   <p className="text-sm text-slate-800 font-medium">{item.text || item.en}</p>
                   {item.vi && <p className="text-xs text-slate-500">{item.vi}</p>}
                 </div>
-                <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleUnclear(index); }} className={`text-xs whitespace-nowrap ${unclearLines.includes(index) ? 'text-rose-600 font-semibold' : 'text-slate-400'}`}>{unclearLines.includes(index) ? 'Chưa hiểu' : 'Đánh dấu'}</span>
+                <span role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); toggleUnclear(index); }} className={`text-xs whitespace-nowrap ${unclearLines.includes(index) ? 'text-danger-600 font-semibold' : 'text-slate-400'}`}>{unclearLines.includes(index) ? 'Chưa hiểu' : 'Đánh dấu'}</span>
               </button>
             ))}
           </div>

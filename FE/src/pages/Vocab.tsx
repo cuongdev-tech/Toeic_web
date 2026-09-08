@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { fetchApi } from '../lib/api';
-import { BookOpen, Plus, RotateCw, CheckCircle2, XCircle, Layers, List, Sparkles, Trash2, Edit2, Search, Download, Volume2 } from 'lucide-react';
+import { BookOpen, Plus, Layers, List, Sparkles, Trash2, Edit2, Search, Download, Compass } from 'lucide-react';
+import Flashcard from '../components/Flashcard';
+import TopicExplorer from '../components/TopicExplorer';
 
 export default function Vocab() {
   const [vocabs, setVocabs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tab, setTab] = useState<'flashcard' | 'list'>('flashcard');
+  const [tab, setTab] = useState<'flashcard' | 'list' | 'explore'>('flashcard');
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,15 +68,39 @@ export default function Vocab() {
     URL.revokeObjectURL(url);
   };
 
+  const parseCsvLine = (line: string): string[] => {
+    const result: string[] = [];
+    let current = '';
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const char = line[i];
+      if (char === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === ',' && !inQuotes) {
+        result.push(current.trim().replace(/^"|"$/g, ''));
+        current = '';
+      } else {
+        current += char;
+      }
+    }
+    result.push(current.trim().replace(/^"|"$/g, ''));
+    return result;
+  };
+
   const importCsv = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     setImporting(true);
     try {
-      const rows = (await file.text()).split(/\r?\n/).filter(Boolean).slice(1);
+      const rows = (await file.text()).split(/\r?\n/).filter((line) => line.trim()).slice(1);
       let imported = 0;
       for (const row of rows) {
-        const [importedWord, importedMeaning] = row.split(',').map((value) => value.trim().replace(/^"|"$/g, ''));
+        const [importedWord, importedMeaning] = parseCsvLine(row);
         if (!importedWord || !importedMeaning) continue;
         await fetchApi('/vocab', { method: 'POST', body: JSON.stringify({ word: importedWord, meaning: importedMeaning }) });
         imported += 1;
@@ -176,15 +202,15 @@ export default function Vocab() {
   if (loading) return <div className="p-10 text-center text-slate-500 font-medium">Đang tải danh sách từ vựng...</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-6 font-sans space-y-6">
+    <div className="page page-md space-y-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <h1 className="text-2xl font-bold text-slate-900 flex items-center gap-2">
-          <BookOpen className="text-indigo-600" /> Sổ tay Từ vựng TOEIC
+          <BookOpen className="text-primary-600" /> Sổ tay Từ vựng TOEIC
         </h1>
         <div className="flex items-center gap-3">
           <button
             onClick={handleSeedDefault}
-            className="flex items-center gap-1.5 px-3 py-2 bg-emerald-50 text-emerald-600 rounded-xl text-sm font-medium hover:bg-emerald-100 transition-colors"
+            className="flex items-center gap-1.5 px-3 py-2 bg-success-50 text-success-600 rounded-xl text-sm font-medium hover:bg-success-100 transition-colors"
           >
             <Download className="w-4 h-4" /> Nạp từ mẫu TOEIC
           </button>
@@ -196,7 +222,7 @@ export default function Vocab() {
             <button
               onClick={() => setTab('flashcard')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                tab === 'flashcard' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                tab === 'flashcard' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Layers className="w-4 h-4" /> Flashcard
@@ -204,23 +230,33 @@ export default function Vocab() {
             <button
               onClick={() => setTab('list')}
               className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                tab === 'list' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+                tab === 'list' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <List className="w-4 h-4" /> Danh sách ({vocabs.length})
+            </button>
+            <button
+              onClick={() => setTab('explore')}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                tab === 'explore' ? 'bg-white text-primary-600 shadow-sm' : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Compass className="w-4 h-4" /> Khám phá
             </button>
           </div>
         </div>
       </div>
 
+      {tab !== 'explore' && (
+        <>
       {/* Form thêm / sửa từ vựng */}
-      <form onSubmit={handleSaveVocab} className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row gap-4 items-center">
+      <form onSubmit={handleSaveVocab} className="card p-5 flex flex-col md:flex-row gap-4 items-center">
         <input
           type="text"
           placeholder="Từ vựng tiếng Anh (ví dụ: evaluate)"
           value={word}
           onChange={(e) => setWord(e.target.value)}
-          className="flex-1 w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-600 text-sm"
+          className="input"
           required
         />
         <input
@@ -228,14 +264,14 @@ export default function Vocab() {
           placeholder="Ý nghĩa tiếng Việt (ví dụ: đánh giá)"
           value={meaning}
           onChange={(e) => setMeaning(e.target.value)}
-          className="flex-1 w-full p-3 border border-slate-200 rounded-xl outline-none focus:border-indigo-600 text-sm"
+          className="input"
           required
         />
         <div className="flex gap-2 w-full md:w-auto">
           <button
             type="submit"
             disabled={submitting}
-            className="flex-1 md:flex-none bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-6 py-3 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm text-sm"
+            className="btn-primary flex-1 md:flex-none px-6 py-3"
           >
             <Plus className="w-4 h-4" /> {editingId ? 'Cập nhật' : 'Thêm từ mới'}
           </button>
@@ -243,7 +279,7 @@ export default function Vocab() {
             <button
               type="button"
               onClick={() => { setEditingId(null); setWord(''); setMeaning(''); }}
-              className="px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-medium"
+              className="btn-secondary"
             >
               Hủy
             </button>
@@ -252,7 +288,7 @@ export default function Vocab() {
       </form>
 
       {/* Bộ công cụ Tìm kiếm và Lọc */}
-      <div className="flex flex-col md:flex-row gap-4 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-sm">
+      <div className="card p-4 flex flex-col md:flex-row gap-4 items-center justify-between">
         <div className="relative w-full md:w-80">
           <Search className="absolute left-3.5 top-3.5 w-4 h-4 text-slate-400" />
           <input
@@ -260,7 +296,7 @@ export default function Vocab() {
             placeholder="Tìm kiếm từ vựng..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-600"
+            className="input pl-10"
           />
         </div>
         <div className="flex items-center gap-2 w-full md:w-auto">
@@ -268,7 +304,7 @@ export default function Vocab() {
           <select
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value)}
-            className="w-full md:w-auto px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm outline-none focus:border-indigo-600"
+            className="input md:w-auto"
           >
             <option value="">Tất cả cấp độ</option>
             <option value="0">Level 0 (Mới / Cần ôn)</option>
@@ -276,65 +312,38 @@ export default function Vocab() {
             <option value="2">Level 2</option>
             <option value="3">Level 3+</option>
           </select>
-          <label className="flex items-center gap-2 text-sm text-slate-600 whitespace-nowrap"><input type="checkbox" checked={dueOnly} onChange={(event) => setDueOnly(event.target.checked)} /> Cần ôn hôm nay</label>
+          <label className="flex items-center gap-2 text-sm text-slate-600 whitespace-nowrap"><input type="checkbox" checked={dueOnly} onChange={(event) => setDueOnly(event.target.checked)} className="accent-primary-600" /> Cần ôn hôm nay</label>
         </div>
       </div>
+        </>
+      )}
 
-      {vocabs.length === 0 ? (
-        <div className="bg-white p-12 rounded-2xl border border-slate-200 text-center space-y-3 shadow-sm">
-          <Sparkles className="w-10 h-10 text-indigo-400 mx-auto" />
+      {tab === 'explore' ? (
+        <TopicExplorer onChanged={loadVocabs} />
+      ) : vocabs.length === 0 ? (
+        <div className="card p-12 text-center space-y-3">
+          <Sparkles className="w-10 h-10 text-primary-400 mx-auto" />
           <p className="text-lg font-semibold text-slate-800">Không tìm thấy từ vựng nào!</p>
           <p className="text-sm text-slate-500">Hãy thử tìm kiếm từ khóa khác, bấm "Nạp từ mẫu TOEIC" hoặc thêm từ mới vào sổ tay.</p>
         </div>
       ) : tab === 'flashcard' ? (
-        /* Giao diện Flashcard ôn tập */
-        <div className="flex flex-col items-center space-y-6">
-          <div className="text-sm font-medium text-slate-500">
-            Thẻ {currentIndex + 1} / {vocabs.length}
-          </div>
-
-          <div 
-            onClick={() => setIsFlipped(!isFlipped)}
-            className="w-full h-80 bg-white border border-slate-200 rounded-3xl shadow-sm cursor-pointer flex flex-col items-center justify-center p-8 text-center transition-all hover:border-indigo-300 relative select-none"
-          >
-            <span className="absolute top-4 right-4 text-xs bg-indigo-50 text-indigo-600 px-3 py-1 rounded-full font-medium">
-              Cấp độ nhớ: {vocabs[currentIndex].status}
-            </span>
-
-            {!isFlipped ? (
-              <div className="space-y-3">
-                <h2 className="text-4xl font-extrabold text-slate-900">{vocabs[currentIndex].word}</h2>
-                <button type="button" onClick={(event) => { event.stopPropagation(); pronounce(vocabs[currentIndex].word); }} className="mx-auto flex items-center gap-2 text-sm text-indigo-600"><Volume2 className="w-4 h-4" /> Nghe phát âm</button>
-                <p className="text-sm text-slate-400 flex items-center justify-center gap-1">
-                  <RotateCw className="w-3.5 h-3.5" /> Bấm vào thẻ để lật xem nghĩa
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3 animate-fadeIn">
-                <h2 className="text-3xl font-bold text-indigo-600">{vocabs[currentIndex].meaning}</h2>
-                <p className="text-sm text-slate-400">Ý nghĩa của từ</p>
-              </div>
-            )}
-          </div>
-
-          <div className="flex gap-4 w-full">
-            <button
-              onClick={() => handleReview(false)}
-              className="flex-1 bg-red-50 hover:bg-red-100 text-red-600 font-medium py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 border border-red-200"
-            >
-              <XCircle className="w-5 h-5" /> Chưa nhớ (Ôn lại sớm)
-            </button>
-            <button
-              onClick={() => handleReview(true)}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3.5 rounded-xl transition-colors flex items-center justify-center gap-2 shadow-sm"
-            >
-              <CheckCircle2 className="w-5 h-5" /> Đã nhớ (Giãn cách)
-            </button>
-          </div>
+        /* Giao diện Flashcard ôn tập — component lật 3D, tối ưu mobile */
+        <div className="flex flex-col items-center px-1 sm:px-0">
+          <Flashcard
+            key={vocabs[currentIndex]?.id ?? currentIndex}
+            card={vocabs[currentIndex]}
+            index={currentIndex}
+            total={vocabs.length}
+            flipped={isFlipped}
+            onFlip={() => setIsFlipped((prev) => !prev)}
+            onPronounce={pronounce}
+            onKnown={() => handleReview(true)}
+            onUnknown={() => handleReview(false)}
+          />
         </div>
       ) : (
         /* Giao diện Danh sách từ vựng */
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="bg-surface border border-slate-200 rounded-card shadow-card overflow-hidden">
           <div className="divide-y divide-slate-100">
             {vocabs.map((v) => (
               <div key={v.id} className="p-4 flex items-center justify-between hover:bg-slate-50 transition-colors">
@@ -348,14 +357,14 @@ export default function Vocab() {
                   </span>
                   <button
                     onClick={() => handleEdit(v)}
-                    className="p-2 text-slate-400 hover:text-indigo-600 transition-colors rounded-lg hover:bg-indigo-50"
+                    className="p-2 text-slate-400 hover:text-primary-600 transition-colors rounded-lg hover:bg-primary-50"
                     title="Sửa từ"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     onClick={() => handleDelete(v.id)}
-                    className="p-2 text-slate-400 hover:text-red-600 transition-colors rounded-lg hover:bg-red-50"
+                    className="p-2 text-slate-400 hover:text-danger-600 transition-colors rounded-lg hover:bg-danger-50"
                     title="Xóa từ"
                   >
                     <Trash2 className="w-4 h-4" />

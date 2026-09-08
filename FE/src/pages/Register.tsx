@@ -56,8 +56,8 @@ export default function Register() {
   };
 
   return (
-    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-slate-50">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-2xl shadow-sm border border-slate-100">
+    <div className="min-h-[calc(100vh-4rem)] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-background">
+      <div className="page-sm card w-full space-y-8 p-8">
         <div className="text-center">
           <h2 className="text-3xl font-bold text-slate-900 tracking-tight">Tạo tài khoản mới</h2>
           <p className="mt-2 text-sm text-slate-500">
@@ -66,7 +66,7 @@ export default function Register() {
         </div>
         
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg flex items-start gap-3">
+          <div className="bg-danger-50 border border-danger-200 text-danger-600 px-4 py-3 rounded-inner flex items-start gap-3">
             <AlertCircle className="w-5 h-5 shrink-0 mt-0.5" />
             <p className="text-sm font-medium">{error}</p>
           </div>
@@ -90,7 +90,7 @@ export default function Register() {
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm transition-colors outline-none"
+                  className="input pl-10"
                   placeholder="Nguyễn Văn A"
                 />
               </div>
@@ -112,7 +112,7 @@ export default function Register() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm transition-colors outline-none"
+                  className="input pl-10"
                   placeholder="honda@example.com"
                 />
               </div>
@@ -134,7 +134,7 @@ export default function Register() {
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm transition-colors outline-none"
+                  className="input pl-10"
                   placeholder="Ít nhất 8 ký tự"
                 />
               </div>
@@ -156,7 +156,7 @@ export default function Register() {
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="block w-full pl-10 pr-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-indigo-600 focus:border-indigo-600 sm:text-sm transition-colors outline-none"
+                  className="input pl-10"
                   placeholder="Nhập lại mật khẩu"
                 />
               </div>
@@ -166,7 +166,7 @@ export default function Register() {
           <button
             type="submit"
             disabled={loading}
-            className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-600 transition-all disabled:opacity-70 disabled:cursor-not-allowed shadow-sm"
+            className="btn-primary w-full group"
           >
             {loading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -181,7 +181,7 @@ export default function Register() {
 
         <p className="mt-4 text-center text-sm text-slate-600">
           Đã có tài khoản?{' '}
-          <Link to="/login" className="font-semibold text-indigo-600 hover:text-indigo-500 transition-colors">
+          <Link to="/login" className="font-semibold text-primary-600 hover:text-primary-500 transition-colors">
             Đăng nhập
           </Link>
         </p>
