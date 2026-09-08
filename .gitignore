@@ -1,5 +1,8 @@
 public/uploads/
 node_modules
+# Build outputs - luôn build lại từ source (Docker/CI), không push lên git
+dist/
+FE/dist/
 # Keep environment variables out of version control
 .env
 
